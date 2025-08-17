@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "proxmitycraft",
+  "version": "${version}",
+  "name": "Promixycraft",
+  "description": "",
+  "authors": [],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "icon": "assets/proxmitycraft/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "fabric-datagen": [
+      "dev.jamespowell.proxmitycraft.client.ProxmitycraftDataGenerator"
+    ],
+    "client": [
+      "dev.jamespowell.proxmitycraft.client.ProxmitycraftClient"
+    ],
+    "main": [
+      "dev.jamespowell.proxmitycraft.Proxmitycraft"
+    ]
+  },
+  "mixins": [
+    "proxmitycraft.mixins.json",
+    {
+      "config": "proxmitycraft.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-language-kotlin": ">=${kotlin_loader_version}",
+    "fabric": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
