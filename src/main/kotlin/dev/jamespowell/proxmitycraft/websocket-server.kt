@@ -332,7 +332,7 @@ fun startWebsocketServer() {
         webSocket("/") {
           webRTCServer.handleWebSocket(this)
         }
-        get {
+        get("{...}") {
           call.respondText(
             InputStreamReader(object {}.javaClass.getResourceAsStream("/index.html")!!, "UTF-8").readText(), ContentType.Text.Html
           )
