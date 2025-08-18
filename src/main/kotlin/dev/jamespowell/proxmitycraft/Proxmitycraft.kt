@@ -115,10 +115,6 @@ class Proxmitycraft : ModInitializer {
       proximityUser.webSocketClient?.handleLeave()
 
       for (otherProximityUser in voicePlayers) {
-        if (otherProximityUser == proximityUser) {
-          continue
-        }
-
         val pair = SymmetricPair(proximityUser.voiceUuid, otherProximityUser.voiceUuid)
         if (volumes[pair] != 0.0) {
           CoroutineScope(Dispatchers.IO).launch {
