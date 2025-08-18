@@ -8,6 +8,9 @@ import io.ktor.routing.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
 import io.ktor.websocket.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.descriptors.PrimitiveKind
@@ -17,7 +20,7 @@ import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
 import java.security.KeyStore
-import java.util.UUID
+import java.util.*
 
 @Serializable
 data class ICECandidate(
@@ -59,39 +62,77 @@ data class Message(
   val fromUsername: String? = null,
   val username: String? = null,
   val message: String? = null,
-  val users: List<User>? = null,
+  val shouldInitiate: Boolean? = null,
+//  val users: List<User>? = null,
   val offer: SessionDescription? = null,
   val answer: SessionDescription? = null,
-  val candidate: ICECandidate? = null
+  val candidate: ICECandidate? = null,
+  val volume: Double? = null
 )
 
+private val json = Json { ignoreUnknownKeys = true }
 
-@Serializable
-data class User(
-  val username: String,
-  @Serializable(with = UUIDSerializer::class)
-  val sessionId: UUID
-)
+class ProximityWebSocketClient(
+  val webSocket: WebSocketSession,
+  val proximityUser: ProximityUser
+) {
+  suspend fun updateVolume(other: ProximityUser, previousVolume: Double, volume: Double, shouldInitiate: Boolean) {
+    if (previousVolume == 0.0) { // we need to connect the two peers
+      send(
+        Message(
+          type = "user-joined",
+          username = other.name,
+          sessionId = other.voiceUuid,
+          shouldInitiate = shouldInitiate,
+          volume = volume
+        )
+      )
 
-class WebRTCServer {
-  private val users = mutableMapOf<WebSocketSession, User>()
-
-  private val json = Json { ignoreUnknownKeys = true }
-
-  private suspend fun broadcast(message: Message, excludeWs: WebSocketSession? = null) {
-    val messageStr = json.encodeToString(message)
-
-    users.keys.forEach { ws ->
-      if (ws != excludeWs) {
-        try {
-          ws.send(Frame.Text(messageStr))
-        } catch (e: Exception) {
-          println("Error sending message to user: ${e.message}")
-        }
-      }
+      return
     }
+
+    if (volume == 0.0) { // we need to disconnect the two peers
+      send(
+        Message(
+          type = "user-left",
+          sessionId = other.voiceUuid
+        )
+      )
+
+      return
+    }
+
+    send(
+      Message(
+        type = "update-volume",
+        sessionId = other.voiceUuid,
+        volume = volume
+      )
+    )
   }
 
+  fun handleLeave() {
+    CoroutineScope(Dispatchers.IO).launch {
+      voicePlayers.remove(proximityUser)
+    }
+
+    proximityUser.webSocketClient = null
+  }
+
+  suspend fun send(message: Message) {
+    webSocket.send(Frame.Text(json.encodeToString(message)))
+  }
+}
+
+private fun findVoicePlayer(session: WebSocketSession): ProximityUser? {
+  return voicePlayers.find { it.webSocketClient?.webSocket == session }
+}
+
+private fun findVoicePlayer(sessionId: UUID): ProximityUser? {
+  return voicePlayers.find { it.voiceUuid == sessionId }
+}
+
+class WebRTCServer {
   suspend fun handleWebSocket(session: WebSocketSession) {
     println("New WebSocket connection")
 
@@ -106,7 +147,6 @@ class WebRTCServer {
               when (message.type) {
                 "join" -> handleJoin(session, message)
                 "offer", "answer", "ice-candidate" -> handleWebRTCSignaling(session, message)
-                "leave" -> handleLeave(session)
               }
             } catch (e: Exception) {
               println("Error handling message: $e")
@@ -124,11 +164,39 @@ class WebRTCServer {
   }
 
   private suspend fun handleJoin(session: WebSocketSession, message: Message) {
-    val sessionId = message.fromSessionId ?: return
+    val sessionId = message.fromSessionId
+    if (sessionId == null) {
+      session.send(
+        Frame.Text(
+          json.encodeToString(
+            Message(
+              type = "error",
+              message = "Missing session ID"
+            )
+          )
+        )
+      )
 
-    // Check if username is already taken in the room
-    val uuidTaken = users.values.any { it.sessionId == sessionId }
-    if (uuidTaken) {
+      return
+    }
+
+    val voicePlayer = findVoicePlayer(sessionId)
+    if (voicePlayer == null) {
+      session.send(
+        Frame.Text(
+          json.encodeToString(
+            Message(
+              type = "error",
+              message = "No matching player for session ID"
+            )
+          )
+        )
+      )
+
+      return
+    }
+
+    if (voicePlayer.webSocketClient != null) {
       session.send(
         Frame.Text(
           json.encodeToString(
@@ -139,24 +207,40 @@ class WebRTCServer {
           )
         )
       )
+
       return
     }
 
-    if (!voicePlayers.any { it.voiceUuid == sessionId }) {
-      session.send(
-        Frame.Text(
-          json.encodeToString(
-            Message(
-              type = "error",
-              message = "Invalid session ID"
-            )
-          )
-        )
+    voicePlayer.webSocketClient = ProximityWebSocketClient(
+      session,
+      voicePlayer
+    )
+
+    for (other in voicePlayers) {
+      if (other == voicePlayer) {
+        continue
+      }
+
+      val volume = other.location.calculateVolumeTo(voicePlayer.location)
+      volumes[SymmetricPair(voicePlayer.voiceUuid, other.voiceUuid)] = volume
+      if (volume == 0.0) {
+        continue
+      }
+
+      other.webSocketClient?.updateVolume(
+        voicePlayer,
+        0.0,
+        volume,
+        false
       )
-      return
-    }
 
-    // Add user to room
+      voicePlayer.webSocketClient?.updateVolume(
+        other,
+        0.0,
+        volume,
+        true
+      )
+    }
 
     // Send join confirmation with peer ID and current users
     session.send(
@@ -164,64 +248,56 @@ class WebRTCServer {
         json.encodeToString(
           Message(
             type = "joined",
-            username = voicePlayers.find { it.voiceUuid == sessionId }!!.name,
-            users = users.values.toList()
+            username = voicePlayer.name,
           )
         )
       )
     )
 
-    val sessionUsername = voicePlayers.find { it.voiceUuid == sessionId }!!.name
-    users[session] = User(sessionUsername, sessionId)
-
     // Notify others in room
-    broadcast(
-      Message(
-        type = "user-joined",
-        username = sessionUsername,
-        sessionId = sessionId
-      ), session
-    )
+//    broadcast(
+//      Message(
+//        type = "user-joined",
+//        username = sessionUsername,
+//        sessionId = sessionId
+//      ), session
+//    )
 
-    println("User $sessionUsername ($sessionId) joined")
+    println("User ${voicePlayer.name} ($sessionId) joined")
   }
 
   private suspend fun handleWebRTCSignaling(session: WebSocketSession, message: Message) {
-    val user = users[session] ?: return
+    val user = findVoicePlayer(session) ?: return
 
-    val peer = users.entries.find { it.value.sessionId == message.targetSessionId }
+    val peer = voicePlayers.find { it.voiceUuid == message.targetSessionId }
     if (peer != null) {
       try {
         val forwardedMessage = message.copy(
-          fromSessionId = user.sessionId,
-          fromUsername = user.username
+          fromSessionId = user.voiceUuid,
+          fromUsername = user.name
         )
 
-        peer.key.send(Frame.Text(json.encodeToString(forwardedMessage)))
+        peer.webSocketClient!!.send(forwardedMessage)
       } catch (e: Exception) {
         println("Error forwarding message: ${e.message}")
       }
     }
   }
 
-  private suspend fun handleLeave(session: WebSocketSession) {
-    handleDisconnect(session)
-  }
-
-  private suspend fun handleDisconnect(session: WebSocketSession) {
-    val user = users[session] ?: return
+  private fun handleDisconnect(session: WebSocketSession) {
+    val proximityUser = findVoicePlayer(session) ?: return
 
     // Clean up empty rooms
-    broadcast(
-      Message(
-        type = "user-left",
-        username = user.username,
-        sessionId = user.sessionId
-      )
-    )
+//    broadcast(
+//      Message(
+//        type = "user-left",
+//        username = user.username,
+//        sessionId = user.sessionId
+//      )
+//    )
 
-    users.remove(session)
-    println("User ${user.username} (${user.sessionId}) left")
+    proximityUser.webSocketClient = null
+    println("User ${proximityUser.name} (${proximityUser.voiceUuid}) left")
   }
 }
 
@@ -249,7 +325,8 @@ fun startWebsocketServer() {
       install(WebSockets)
       routing {
         get("/") {
-          call.respondText("YO!", ContentType.Text.Html
+          call.respondText(
+            "YO!", ContentType.Text.Html
           )
         }
         get("/health") {
