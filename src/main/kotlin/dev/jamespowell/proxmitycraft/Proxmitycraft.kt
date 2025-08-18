@@ -122,6 +122,7 @@ class Proxmitycraft : ModInitializer {
         if (volumes[pair] != 0.0) {
           CoroutineScope(Dispatchers.IO).launch {
             otherProximityUser.webSocketClient?.updateVolume(proximityUser, volumes[pair]!!, 0.0, false)
+            proximityUser.webSocketClient?.updateVolume(otherProximityUser, volumes[pair]!!, 0.0, false)
           }
         }
 
