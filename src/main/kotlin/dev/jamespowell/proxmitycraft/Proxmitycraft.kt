@@ -1,6 +1,7 @@
 package dev.jamespowell.proxmitycraft
 
 import io.ktor.http.cio.websocket.WebSocketSession
+import io.ktor.http.cio.websocket.close
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -122,14 +123,12 @@ class Proxmitycraft : ModInitializer {
         if (volumes[pair] != 0.0) {
           CoroutineScope(Dispatchers.IO).launch {
             otherProximityUser.webSocketClient?.updateVolume(proximityUser, volumes[pair]!!, 0.0, false)
-            proximityUser.webSocketClient?.updateVolume(otherProximityUser, volumes[pair]!!, 0.0, false)
           }
         }
 
         volumes.remove(pair)
       }
 
-      voicePlayers.remove(proximityUser)
       println("Removed user ${proximityUser.name}")
     }
 
