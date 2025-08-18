@@ -326,16 +326,16 @@ fun startWebsocketServer() {
     module {
       install(WebSockets)
       routing {
-        get("/") {
-          call.respondText(
-            InputStreamReader(object {}.javaClass.getResourceAsStream("/index.html")!!, "UTF-8").readText(), ContentType.Text.Html
-          )
-        }
         get("/health") {
           call.respondText("ok")
         }
         webSocket("/") {
           webRTCServer.handleWebSocket(this)
+        }
+        get {
+          call.respondText(
+            InputStreamReader(object {}.javaClass.getResourceAsStream("/index.html")!!, "UTF-8").readText(), ContentType.Text.Html
+          )
         }
       }
     }

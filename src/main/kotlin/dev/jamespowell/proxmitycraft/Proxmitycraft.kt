@@ -87,7 +87,7 @@ class Proxmitycraft : ModInitializer {
               .styled { style ->
                 style.withColor(Formatting.BLUE)
                   .withUnderline(true)
-                  .withClickEvent(ClickEvent.OpenUrl(URI.create("https://192.168.1.110:3000/voice/${voiceUuid}")))
+                  .withClickEvent(ClickEvent.OpenUrl(URI.create("https://proximitycraft.com/voice/${voiceUuid}")))
               }
           )
           .append(Text.literal("."))
