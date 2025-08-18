@@ -116,7 +116,7 @@ class ProximityWebSocketClient(
   fun handleLeave() {
     CoroutineScope(Dispatchers.IO).launch {
       voicePlayers.remove(proximityUser)
-      proximityUser.webSocketClient?.webSocket.close();
+      proximityUser.webSocketClient?.webSocket?.close();
     }
 
     proximityUser.webSocketClient = null
