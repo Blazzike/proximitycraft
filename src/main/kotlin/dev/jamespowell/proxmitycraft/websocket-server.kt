@@ -19,6 +19,8 @@ import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
+import java.io.InputStreamReader
+import java.nio.charset.Charset
 import java.security.KeyStore
 import java.util.*
 
@@ -326,7 +328,7 @@ fun startWebsocketServer() {
       routing {
         get("/") {
           call.respondText(
-            "YO!", ContentType.Text.Html
+            InputStreamReader(object {}.javaClass.getResourceAsStream("/index.html")!!, "UTF-8").readText(), ContentType.Text.Html
           )
         }
         get("/health") {
