@@ -302,21 +302,21 @@ class WebRTCServer {
 }
 
 fun startWebsocketServer() {
-  val port = System.getenv("PORT")?.toIntOrNull() ?: 1234
+  val port = System.getenv("PORT")?.toIntOrNull() ?: 443
   val webRTCServer = WebRTCServer()
 
   // Load SSL keystore from classpath
   val keystoreStream = object {}.javaClass.getResourceAsStream("/keystore.p12")
     ?: throw IllegalStateException("Could not find keystore.p12 in resources")
   val keyStore = KeyStore.getInstance("PKCS12")
-  keyStore.load(keystoreStream, "changeit".toCharArray())
+  keyStore.load(keystoreStream, "".toCharArray())
 
   val environment = applicationEngineEnvironment {
     sslConnector(
       keyStore = keyStore,
       keyAlias = "proximitycraft",
-      keyStorePassword = { "changeit".toCharArray() },
-      privateKeyPassword = { "changeit".toCharArray() }
+      keyStorePassword = { "".toCharArray() },
+      privateKeyPassword = { "".toCharArray() }
     ) {
       this.port = port
       this.host = "0.0.0.0"
