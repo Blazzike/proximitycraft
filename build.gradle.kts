@@ -221,6 +221,86 @@ tasks.register<JavaExec>("runClient2") {
   )
 }
 
+// Let's Encrypt certificate generation task
+tasks.register("generateLetsEncryptCert") {
+  group = "ssl"
+  description = "Generates Let's Encrypt certificate using certbot and converts to .p12 format"
+  
+  val domain = project.findProperty("domain") as String? ?: throw GradleException("Domain property is required. Use -Pdomain=your-domain.com")
+  val email = project.findProperty("email") as String? ?: throw GradleException("Email property is required. Use -Pemail=your-email@example.com")
+  
+  val resourcesDir = file("src/main/resources")
+  val tmpDir = file(System.getProperty("java.io.tmpdir") + "/letsencrypt-$domain")
+  val certDir = file("$tmpDir/live/$domain")
+  val keystoreFile = file("$resourcesDir/keystore.p12")
+  
+  doLast {
+    println("Generating Let's Encrypt certificate for domain: $domain")
+    println("Email: $email")
+    println("Using temporary directory: ${tmpDir.absolutePath}")
+    
+    // Ensure directories exist
+    resourcesDir.mkdirs()
+    tmpDir.mkdirs()
+    
+    // Run certbot to generate certificate using temporary work directory
+    val certbotResult = project.exec {
+      commandLine("certbot", "certonly", 
+        "--standalone", 
+        "--non-interactive", 
+        "--agree-tos", 
+        "--email", email,
+        "--work-dir", tmpDir.absolutePath,
+        "--config-dir", tmpDir.absolutePath,
+        "--logs-dir", tmpDir.absolutePath,
+        "-d", domain)
+      isIgnoreExitValue = false
+    }
+    
+    if (certbotResult.exitValue != 0) {
+      throw GradleException("Certbot failed to generate certificate")
+    }
+    
+    println("Certificate generated successfully")
+    
+    // Check if certificate files exist
+    val certFile = file("$certDir/cert.pem")
+    val keyFile = file("$certDir/privkey.pem")
+    val chainFile = file("$certDir/chain.pem")
+    
+    if (!certFile.exists() || !keyFile.exists() || !chainFile.exists()) {
+      throw GradleException("Certificate files not found in $certDir")
+    }
+    
+    println("Converting certificate to .p12 format without password...")
+    
+    // Convert to .p12 format using openssl without password
+    val opensslResult = project.exec {
+      commandLine("openssl", "pkcs12", "-export",
+        "-in", certFile.absolutePath,
+        "-inkey", keyFile.absolutePath,
+        "-certfile", chainFile.absolutePath,
+        "-out", keystoreFile.absolutePath,
+        "-passout", "pass:",
+        "-name", domain)
+      isIgnoreExitValue = false
+    }
+    
+    if (opensslResult.exitValue != 0) {
+      throw GradleException("Failed to convert certificate to .p12 format")
+    }
+    
+    println("Certificate successfully converted to .p12 format")
+    println("Keystore file: ${keystoreFile.absolutePath}")
+    println("Certificate alias: $domain")
+    println("No password required for keystore")
+    
+    // Clean up temporary directory
+    tmpDir.deleteRecursively()
+    println("Cleaned up temporary directory")
+  }
+}
+
 // configure the maven publication
 publishing {
   publications {
