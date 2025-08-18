@@ -314,7 +314,7 @@ fun startWebsocketServer() {
   val environment = applicationEngineEnvironment {
     sslConnector(
       keyStore = keyStore,
-      keyAlias = "proximitycraft",
+      keyAlias = "proximitycraft.com",
       keyStorePassword = { "".toCharArray() },
       privateKeyPassword = { "".toCharArray() }
     ) {
