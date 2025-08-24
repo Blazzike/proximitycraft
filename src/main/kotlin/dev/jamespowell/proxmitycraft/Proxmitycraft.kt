@@ -1,7 +1,5 @@
 package dev.jamespowell.proxmitycraft
 
-import io.ktor.http.cio.websocket.WebSocketSession
-import io.ktor.http.cio.websocket.close
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -111,7 +109,11 @@ class Proxmitycraft : ModInitializer {
     }
 
     ServerPlayerEvents.LEAVE.register { player ->
-      val proximityUser = voicePlayers.find { it.playerUuid == player.uuid }!!
+      val proximityUser = voicePlayers.find { it.playerUuid == player.uuid }
+      if (proximityUser == null) {
+        println("Could not find user ${player.name.string}")
+        return@register
+      }
       proximityUser.webSocketClient?.handleLeave()
 
       for (otherProximityUser in voicePlayers) {
